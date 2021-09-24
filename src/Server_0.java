@@ -3,6 +3,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.URLDecoder;
 import java.util.*;
 
 public class Server_0 {
@@ -85,7 +86,20 @@ public class Server_0 {
         out.close();
         in.close();
         socket.close();
+
         System.out.printf("METHOD: %s REQ: %s HTTP VER. %s\n", method, requestUrl, httpVersion);
+
+        Map<String, String> paramMap = new HashMap<String, String>();
+        int indexOfQuotation = requestUrl.indexOf("?");
+        if (indexOfQuotation > 0) {
+            StringTokenizer st = new StringTokenizer(requestUrl.substring(indexOfQuotation+1), "&");
+
+            while (st.hasMoreTokens()) {
+                String params = st.nextToken();
+                paramMap.put(params.substring(0, params.indexOf("=")), params.substring(params.indexOf("=")+1));
+            }
+        }
+
         System.out.println("Header list");
         Set<String> keySet = headerMap.keySet();
         Iterator<String> keyIter = keySet.iterator();
@@ -94,11 +108,47 @@ public class Server_0 {
             System.out.printf(" Key: %s Value: %s\n", headerName, headerMap.get(headerName));
         }
         if (bodyByteList != null) {
-            System.out.print("Message Body-->");
-            for(byte oneByte : bodyByteList) {
-                System.out.print(oneByte);
+            if ("application/x-www-form-urlencoded".equals(headerMap.get("Content-Type").trim())) {
+                int startIndex = 0;
+                byte[] srcBytes = new byte[bodyByteList.size()];
+                String currentName = null;
+                for (int i=0; i<bodyByteList.size(); i++) {
+                    byte oneByte = bodyByteList.get(i);
+                    srcBytes[i] = oneByte;
+                    if ('=' == oneByte) {
+                        byte[] one = new byte[i - startIndex];
+                        System.arraycopy(srcBytes, startIndex, one, 0, i - startIndex);
+                        currentName = URLDecoder.decode(new String(one), "CP949");
+                        startIndex = i + 1;
+                    }
+                    else if ('&' == oneByte) {
+                        byte[] one = new byte[i - startIndex];
+                        System.arraycopy(srcBytes, startIndex, one, 0, i - startIndex);
+                        paramMap.put(currentName, URLDecoder.decode(new String(one), "CP949"));
+                        startIndex = i + 1;
+                    }
+                    else if (i == bodyByteList.size() - 1) {
+                        byte[] one = new byte[i - startIndex + 1];
+                        System.arraycopy(srcBytes, startIndex, one, 0, i - startIndex + 1);
+                        paramMap.put(currentName, URLDecoder.decode(new String(one), "CP949"));
+                        startIndex = i + 1;
+                    }
+                }
             }
-            System.out.println("<--");
+            else {
+                System.out.print("Message Body-->");
+                for(byte oneByte : bodyByteList) {
+                    System.out.print(oneByte);
+                }
+                System.out.println("<--");
+            }
+        }
+
+        Set<String> paramKeySet = paramMap.keySet();
+        Iterator<String> paramKeyIter = paramKeySet.iterator();
+        while (paramKeyIter.hasNext()) {
+            String paramName = paramKeyIter.next();
+            System.out.printf("paramName: %s paramValue: %s\n", paramName, paramMap.get(paramName));
         }
         System.out.println("End of HTTP Message.");
     }
