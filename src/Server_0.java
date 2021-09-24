@@ -29,60 +29,70 @@ public class Server_0 {
         int bodyRead = 0;
         List<Byte> bodyByteList = null;
         Map<String, String> headerMap = new HashMap<String, String>();
-        while (-1 != (oneInt = in.read())) {
-            byte thisByte = (byte)oneInt;
-            if (bodyFlag) {
-                bodyRead++;
-                bodyByteList.add(thisByte);
-                if (bodyRead >= contentLength) {
-                    break;
-                }
-            }
-            else {
-                if (thisByte == Server_0.LF && oldByte == Server_0.CR) {
-                    // CRLF가 완성되었음 따라서 직전 CRLF부터 여기까지가 한 행임
-                    // substring -2가 아닌 -1을 하는 이유는 아직 LF가 버퍼에 들어가기 전이기 때문이다.
-                    String oneLine = sb.substring(0, sb.length() - 1);
-                    lineNumber++;
+        int readSize = 0;
+        byte[] readBuffer = new byte[128];
+        boolean isTerminal = false;
+        while (0 < (readSize = in.read(readBuffer))) {
+            for (int i = 0; i < readSize; i++) {
+                byte thisByte = (byte) readBuffer[i];
+                System.out.print((char) thisByte);
 
-                    if (lineNumber == 1) {
-                        // 요청의 첫 행, HTTP 메서드, 요청 URL, 버전을 알아냄
-                        int firstBlank = oneLine.indexOf(" ");
-                        int secondBlank = oneLine.lastIndexOf(" ");
-                        method = oneLine.substring(0, firstBlank);
-                        requestUrl = oneLine.substring(firstBlank + 1, secondBlank);
-                        httpVersion = oneLine.substring(secondBlank + 1);
+                if (bodyFlag) {
+                    bodyRead++;
+                    bodyByteList.add(thisByte);
+                    if (bodyRead >= contentLength) {
+                        isTerminal = true;
+                        break;
                     }
-                    else {
-                        if (oneLine.length() <= 0) {
-                            // 내용이 없는 행
-                            // 따라서 메시지 헤더의 마지막일 경우임
-                            bodyFlag = true;
-                            if ("GET".equals(method)) {
-                                // GET 방식이면 메시지 바디가 없음
-                                break;
-                            }
-                            String contentLengthValue = headerMap.get("Content-Length");
-                            if (contentLengthValue != null) {
-                                contentLength = Integer.parseInt(contentLengthValue.trim());
+                } else {
+                    if (thisByte == Server_0.LF && oldByte == Server_0.CR) {
+                        // CRLF가 완성되었음 따라서 직전 CRLF부터 여기까지가 한 행임
+                        // substring -2가 아닌 -1을 하는 이유는 아직 LF가 버퍼에 들어가기 전이기 때문이다.
+                        String oneLine = sb.substring(0, sb.length() - 1);
+                        lineNumber++;
+
+                        if (lineNumber == 1) {
+                            // 요청의 첫 행, HTTP 메서드, 요청 URL, 버전을 알아냄
+                            int firstBlank = oneLine.indexOf(" ");
+                            int secondBlank = oneLine.lastIndexOf(" ");
+                            method = oneLine.substring(0, firstBlank);
+                            requestUrl = oneLine.substring(firstBlank + 1, secondBlank);
+                            httpVersion = oneLine.substring(secondBlank + 1);
+                        } else {
+                            if (oneLine.length() <= 0) {
+                                // 내용이 없는 행
+                                // 따라서 메시지 헤더의 마지막일 경우임
                                 bodyFlag = true;
-                                bodyByteList = new ArrayList<Byte>();
+                                if ("GET".equals(method)) {
+                                    // GET 방식이면 메시지 바디가 없음
+                                    isTerminal = true;
+                                    break;
+                                }
+                                String contentLengthValue = headerMap.get("Content-Length");
+                                if (contentLengthValue != null) {
+                                    contentLength = Integer.parseInt(contentLengthValue.trim());
+                                    bodyFlag = true;
+                                    bodyByteList = new ArrayList<Byte>();
+                                }
+                                continue;
                             }
-                            continue;
+                            int indexOfColon = oneLine.indexOf(":");
+                            String headerName = oneLine.substring(0, indexOfColon);
+                            String headerValue = oneLine.substring(indexOfColon + 1);
+                            headerMap.put(headerName, headerValue);
                         }
-                        int indexOfColon = oneLine.indexOf(":");
-                        String headerName = oneLine.substring(0, indexOfColon);
-                        String headerValue = oneLine.substring(indexOfColon + 1);
-                        headerMap.put(headerName, headerValue);
+                        sb.setLength(0);
+                    } else {
+                        sb.append((char) thisByte);
                     }
-                    sb.setLength(0);
                 }
-                else {
-                    sb.append((char)thisByte);
-                }
+                oldByte = thisByte;
             }
-            oldByte = (byte)oneInt;
+            if (isTerminal) {
+                break;
+            }
         }
+
         out.close();
         in.close();
         socket.close();
